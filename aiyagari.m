@@ -8,6 +8,7 @@ sigma = 2; % coefficient of risk aversion
 alpha = 1/3;
 rho = 0.5;
 sigma_e = 0.2;
+delta = 0.025
 m = 5;
 [z, PI] = TAUCHEN(m, rho, sigma_e, 1)    ; % transition matrix
 z=exp(z);
@@ -17,15 +18,15 @@ PIstar = V(:, 1)./sum(V(:, 1))
 
 % ASSET VECTOR
 a_lo = 0; %lower bound of grid points
-a_hi = 20;%upper bound of grid points
+a_hi = 60;%upper bound of grid points
 num_a = 300;
 
 a = linspace(a_lo, a_hi, num_a); % asset (row) vector
 
 
 % INITIAL GUESS FOR q
-K_min = 0;
-K_max = 10;
+K_min = 29;
+K_max = 30;
 K_guess = (K_min + K_max) / 2;
 
 % ITERATE OVER ASSET PRICES
@@ -34,7 +35,7 @@ while abs(aggK) >= 0.01 ;
 
 % CURRENT RETURN (UTILITY) FUNCTION
 N = PIstar'*z;
-r = 1+alpha*(K_guess^(alpha-1))*N^(1-alpha);
+r = 1+alpha*(K_guess^(alpha-1))*N^(1-alpha)-delta;
 w = (1-alpha)*(K_guess^(alpha))*N^(-alpha);
 cons = bsxfun(@minus, r*a',  a);
 cons = bsxfun(@plus, cons, permute(w*z', [1 3 2]));
@@ -45,6 +46,7 @@ ret(cons<0) = -Inf;
 v_guess = zeros(m, num_a);
 
 % VALUE FUNCTION ITERATION
+k=1;
 v_tol = 1;
 while v_tol >.0001;
    % CONSTRUCT TOTAL RETURN FUNCTION
@@ -53,9 +55,31 @@ while v_tol >.0001;
    
    % CHOOSE HIGHEST VALUE (ASSOCIATED WITH a' CHOICE)
    [vfn, pol_indx] = max(v_mat, [], 2);
-   vfn = permute(vfn, [3 1 2]);
+   vfn_1 = permute(vfn, [3 1 2]);
+   vfn_1 = reshape(vfn_1, [m*num_a,1]);
+   ret_1 = zeros(num_a, 1, m);
+   for i=1:5
+       for j=1:num_a
+           ret_1(j, 1, i)=ret(j, pol_indx(j,1,i),i);
+       end
+   end
+   ret_1 = permute(ret_1, [3 1 2]);
+   ret_1 = reshape(ret_1, [m*num_a,1]);
    
-   v_tol = abs(max(v_guess(:) - vfn(:)));
+   pol_indx_1 = permute(pol_indx, [3 1 2]);
+   Q = makeQmatrix(pol_indx_1, PI);
+   
+   
+   i=1;
+   for i=1:30
+       vfn_1=ret_1+beta*Q*vfn_1;
+       i=i+1;
+   end
+   
+   k;
+   k=k+1;
+   vfn=reshape(vfn_1, [m,num_a]); 
+   v_tol = abs(max(max(v_guess(:) - vfn(:))));
    
    v_guess = vfn; %update value functions
 end;
@@ -111,7 +135,7 @@ end
 
 
 % CHECK AGGREGATE DEMAND
-aggK = sum( pol_fn(:) .* Mu(:) ) - K_guess; % Aggregate future assets
+aggK = sum(sum( pol_fn(:) .* Mu(:) )) - K_guess; % Aggregate future assets
 
 if aggK > 0 ;
     K_min = K_guess ;
